@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CVAT Progress</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="page-shell">
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">CVAT</span>
+        <h1>Прогресс разметки</h1>
+      </div>
+    </header>
+
+    {% if message %}
+      <div class="notice success">{{ message }}</div>
+    {% endif %}
+
+    {% if error %}
+      <div class="notice error">{{ error }}</div>
+    {% endif %}
+
+    <section class="upload-grid{% if not current_project %} upload-grid--single{% endif %}">
+      <form
+        class="upload-card"
+        action="/upload/dataset"
+        method="post"
+        enctype="multipart/form-data"
+      >
+        <div class="upload-icon">1</div>
+
+        <div>
+          <h2>jobs_info</h2>
+          <p>CVAT → вкладка Jobs → Export jobs to CSV</p>
+        </div>
+
+        <label class="file-picker">
+          <input
+            type="file"
+            name="file"
+            accept=".csv,text/csv"
+            required
+          >
+          <span class="file-label">Выбрать файл</span>
+          <span class="file-name">Файл не выбран</span>
+        </label>
+
+        <button type="submit">
+          Загрузить в базу данных
+        </button>
+      </form>
+
+      {% if current_project %}
+      <form
+        class="upload-card muted"
+        action="/upload/annotations"
+        method="post"
+        enctype="multipart/form-data"
+      >
+        <input type="hidden" name="project" value="{{ current_project }}">
+        <div class="upload-icon">2</div>
+
+        <div>
+          <div class="title-line">
+            <h2>annotations_info</h2>
+            <!-- <span class="badge">Этап 2</span> -->
+          </div>
+
+          <p>
+            Загрузите метки и количество размеченных кадров для проекта
+            «{{ current_project }}».
+          </p>
+        </div>
+
+        <label class="file-picker">
+          <input type="file" name="file" required>
+          <span class="file-label">Выбрать файл</span>
+          <span class="file-name">Файл не выбран</span>
+        </label>
+
+        <button type="submit">
+          Загрузить в базу данных
+        </button>
+      </form>
+      {% endif %}
+    </section>
+
+    {% if projects %}
+      <nav class="project-navigation" aria-label="Выбор проекта">
+        <div class="project-navigation__header">
+          <div>
+            <h2>Проекты</h2>
+            <p>Выберите проект, чтобы открыть его таблицу</p>
+          </div>
+
+          {% if current_project %}
+            <a class="project-navigation__all" href="/">Все проекты</a>
+          {% endif %}
+        </div>
+
+        <div class="project-navigation__list">
+          {% for project in projects %}
+            <a
+              class="project-button{% if project.name == current_project %} project-button--active{% endif %}"
+              href="{{ project.url }}"
+              {% if project.name == current_project %}aria-current="page"{% endif %}
+            >
+              {{ project.name }}
+            </a>
+          {% endfor %}
+        </div>
+      </nav>
+    {% endif %}
+
+    <section class="table-card">
+      <div class="table-toolbar">
+        <div>
+          <h2>
+            {% if current_project %}
+              Проект: {{ current_project }}
+            {% else %}
+              База разметки
+            {% endif %}
+          </h2>
+          <p>
+            <span id="visibleCount">{{ rows|length }}</span>
+            записей
+          </p>
+        </div>
+
+        <div class="filters">
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="Поиск по таблице"
+          >
+
+          <input
+            id="jobIdFilter"
+            class="job-id-filter"
+            type="text"
+            placeholder="Job ID через запятую"
+            aria-label="Фильтр Job ID, значения через запятую"
+          >
+
+          <details id="stateFilter" class="multi-filter" data-placeholder="Все статусы">
+            <summary><span>Все статусы</span></summary>
+            <div class="multi-filter__options"></div>
+          </details>
+
+          <details id="projectFilter" class="multi-filter" data-placeholder="Все проекты">
+            <summary><span>Все проекты</span></summary>
+            <div class="multi-filter__options"></div>
+          </details>
+
+          <details id="assigneeFilter" class="multi-filter" data-placeholder="Все разметчики">
+            <summary><span>Все разметчики</span></summary>
+            <div class="multi-filter__options"></div>
+          </details>
+
+          <button
+            type="button"
+            id="downloadCsvButton"
+            class="download-csv-button"
+          >
+            Скачать CSV
+          </button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="progressTable">
+          <thead>
+            <tr>
+              <th>Название</th>
+              <th>Task ID</th>
+              <th>Job ID</th>
+              {% for column in annotation_columns %}
+                <th>{{ column.name }}</th>
+              {% endfor %}
+              <th>Проект</th>
+              <th>Статус</th>
+              <th>Разметчик</th>
+              <th class="actions-col">Действия</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for row in rows %}
+              <tr
+                data-state="{{ row.state or '' }}"
+                data-project="{{ row.project or '' }}"
+                data-assignee="{{ row.assignee or '' }}"
+                data-job-id="{{ row.job_id or '' }}"
+              >
+                <td class="name-cell">
+                  {{ row.name }}
+                </td>
+
+                <td>
+                  <span class="mono">{{ row.task_id }}</span>
+                </td>
+
+                <td>
+                  <span class="mono">{{ row.job_id }}</span>
+                </td>
+
+                {% for column in annotation_columns %}
+                  <td class="annotation-value">
+                    {{ annotation_values.get(row.id, {}).get(column.id, '—') }}
+                  </td>
+                {% endfor %}
+
+                <td>
+                  <span class="mono--project">
+                    {{ row.project or '—' }}
+                  </span>
+                </td>
+
+                <td>
+                  <span class="status
+                    {% if row.state == 'completed' %}status--completed
+                    {% elif row.state == 'in progress' %}status--in-progress
+                    {% elif row.state == 'rejected' %}status--rejected
+                    {% elif row.state == 'new' %}status--new
+                    {% endif %}">
+                    {{ row.state or '—' }}
+                  </span>
+                </td>
+
+                <td>
+                  {{ row.assignee or '—' }}
+                </td>
+
+                <td class="actions-cell">
+                  <form
+                    action="/rows/{{ row.id }}/delete"
+                    method="post"
+                    onsubmit="return confirm('Удалить эту строку?');"
+                  >
+                    <button
+                      type="submit"
+                      class="delete-button"
+                      aria-label="Удалить строку"
+                    >
+                      Удалить
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr class="empty-row">
+                <td colspan="{{ 7 + (annotation_columns|length) }}">
+                  Данных пока нет. Загрузите jobs_info.
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="/static/app.js?v=20261008-dynamic-annotations"></script>
+
+  {% if message or error %}
+    <script>
+      if (window.history.replaceState) {
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
+      }
+    </script>
+  {% endif %}
+</body>
+</html>
